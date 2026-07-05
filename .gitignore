@@ -1,0 +1,11 @@
+# Never commit credentials
+token.txt
+*.token
+.env
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
