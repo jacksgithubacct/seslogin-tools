@@ -29,9 +29,10 @@ with the unit's most recently used categories, so common picks skip the
 parent/child drill-down. Workflow becomes: enter member number -> tap a
 quick tile -> confirm the time -> Submit.
 
-- Each tile shows the child category in bold with its parent labelled
-  beneath, so e.g. `Other / Other` and `Training / Other` (same child,
-  different parent) are unambiguous.
+- Each tile is a native-looking square (icon + child category name), with
+  its parent category as a bold caption below the box, so e.g. `Other /
+  Other` and `Training / Other` (same child, different parent) are
+  unambiguous.
 - "Recent" = the unit's most recently used distinct categories, ranked
   by most recent activity (a just-completed sign-out counts, future /
   scheduled end times don't), read from the same GraphQL the kiosk
@@ -42,12 +43,12 @@ quick tile -> confirm the time -> Submit.
   (one request per member, only ever during an actual sign-in/out).
 - Categories under Trainer / Assessor / Workshop - Trainer are excluded
   (those roles use the full flow; this is for the majority of members).
-- Renders as a native-looking "Recently used" section inside the
-  category view (reusing the app's own `ul.categories` markup), so the
-  tiles are pixel-identical to the real ones - same box, size and
+- Renders as a native-looking "Recently used" section right after the
+  real category grid, cloning the app's own tile classes at runtime, so
+  the tile boxes are pixel-identical to the real ones - same box, size and
   category artwork - and follow the app's "Small categories" option
   automatically. Not a separate overlay/bar. The only difference from a
-  real tile is the parent category shown under the child name.
+  real tile is the parent category shown as a bold caption below the box.
 - Tile icons aren't in the API, so they're harvested from the app's own
   grids as they're seen (cached, persisted). A category not yet seen
   falls back to its parent's icon; the cache fills quickly in normal

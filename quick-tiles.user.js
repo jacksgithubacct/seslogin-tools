@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Quick Category Tiles
 // @namespace    seslogin.userscripts
-// @version      0.8.2
+// @version      0.9.0
 // @description  Adds a row of quick-select tiles at the bottom of the SES Activity category screen for the unit's most recently used categories, so common picks skip the parent/child drill-down. Drives the normal tile flow (no direct mutation); you still confirm with Submit as usual.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -172,15 +172,26 @@
     return document.getElementById("root") || document.body;
   }
 
+  // The rebuilt (Tailwind) kiosk pre-renders every view into the DOM and
+  // slides the inactive ones off to the side - they keep a live
+  // offsetParent, so `offsetParent === null` no longer means "hidden". We
+  // test geometry instead: an element is on-screen only when its box is
+  // within the viewport.
+  function onScreen(el) {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.left >= -5 && r.left < window.innerWidth * 0.95;
+  }
+
   // A tile/category button: a button that isn't one of the controls.
   function isControl(txt) {
     return /^(cancel sign\s?out|back|edit|submit|←|→|‹|›)$/i.test(txt);
   }
 
   function categoryButtons() {
-    return [...root().querySelectorAll("button")].filter((b) => {
-      if (b.closest("#qt-bar")) return false;
-      if (b.offsetParent === null) return false;
+    const ul = nativeList();
+    if (!ul) return [];
+    return [...ul.querySelectorAll("li > button")].filter((b) => {
+      if (!onScreen(b)) return false;
       const t = (b.innerText || "").trim();
       return t && !isControl(t);
     });
@@ -222,13 +233,12 @@
 
   function backButton() {
     return [...root().querySelectorAll("button")].find(
-      (b) =>
-        b.offsetParent !== null && /^back$/i.test((b.innerText || "").trim())
+      (b) => onScreen(b) && /^back$/i.test((b.innerText || "").trim())
     );
   }
 
   function onParentGrid() {
-    return headerSegments() === 3 && !backButton();
+    return headerSegments() === 3 && !backButton() && !!nativeList();
   }
 
   // Only the parent grid - never entry (2 segs), child grid or
@@ -273,7 +283,7 @@
   function clickByText(txt) {
     const b = [...root().querySelectorAll("button")].find(
       (x) =>
-        x.offsetParent !== null &&
+        onScreen(x) &&
         (x.innerText || "").trim().replace(/\s+/g, " ") === txt
     );
     if (b) {
@@ -310,7 +320,7 @@
     await waitFor(() =>
       [...root().querySelectorAll("button")].some(
         (b) =>
-          b.offsetParent !== null &&
+          onScreen(b) &&
           (b.innerText || "").trim().replace(/\s+/g, " ") === child
       )
     );
@@ -322,11 +332,13 @@
   }
 
   // --- UI ---------------------------------------------------------------
-  // Rendered as a native-looking section INSIDE the category view, right
-  // after the real tile grid. By reusing the app's own `ul.categories`
-  // markup/classes the tiles inherit all native styling automatically -
-  // including the "Small categories" option - so it looks built-in
-  // rather than a bolted-on bar.
+  // Rendered as a native-looking "Recently used" section right after the
+  // real category grid. Each tile clones the app's own tile classes at
+  // runtime, so it is pixel-identical (and follows the "Small categories"
+  // option automatically). The tile box holds only the icon + child name,
+  // exactly like a native tile, so it keeps the native fixed square size;
+  // the parent category is a bold caption BELOW the box - never inside it,
+  // so a two-line child name can't push the parent out of the square.
 
   function styleOnce() {
     if (document.getElementById("qt-style")) return;
@@ -335,14 +347,12 @@
     s.textContent =
       "#qt-sec{margin:10px auto 0;padding-top:10px;" +
       "border-top:2px solid #ddd;text-align:center}" +
-      "#qt-sec .qt-h{font-family:inherit;font-size:22px;color:#555;" +
+      "#qt-sec .qt-h{font-family:inherit;font-size:20px;color:#555;" +
       "margin:0 0 4px}" +
-      // .qt-t buttons live inside ul.categories so they inherit the
-      // native tile look; we only style the two text lines + ensure the
-      // box height matches the icon'd native tiles.
-      "#qt-list .qt-c{display:block;font-weight:700;line-height:1.15}" +
-      "#qt-list .qt-p{display:block;font-size:.7em;color:#666;" +
-      "font-weight:400;margin-top:5px}";
+      "#qt-list > li{text-align:center;vertical-align:top}" +
+      // The parent category, bold, below the tile box.
+      "#qt-list .qt-p{font-weight:700;font-size:.82em;line-height:1.1;" +
+      "margin:4px 12px 0}";
     document.head.appendChild(s);
   }
 
@@ -358,16 +368,27 @@
   function bindClick() {
     if (clickBound) return;
     clickBound = true;
+    // Whole tile (box + caption below) is tappable.
     document.addEventListener("click", (e) => {
-      const t = e.target.closest("#qt-list .qt-t[data-name]");
+      const t = e.target.closest("#qt-list li[data-name]");
       if (t) pick(t.getAttribute("data-name"));
     });
   }
 
+  // The visible category grid. The rebuilt kiosk renders each grid as a
+  // plain `ul` of `li > button` tiles inside a sliding view panel; the
+  // active panel is the one currently on-screen. We pick the `ul` (never
+  // our own #qt-list) whose first tile button is within the viewport.
   function nativeList() {
-    const v = root().querySelector(".view.categoriesview");
-    if (!v) return null;
-    return v.querySelector("ul.categories:not(#qt-list)");
+    const uls = [...root().querySelectorAll("ul")].filter(
+      (u) => u.id !== "qt-list" && u.querySelector("li > button")
+    );
+    return (
+      uls.find((u) => {
+        const b = u.querySelector("li > button");
+        return b && onScreen(b);
+      }) || null
+    );
   }
 
   // Category icons aren't in GraphQL - each native tile just has an
@@ -382,10 +403,8 @@
 
   function harvestIcons() {
     let changed = false;
-    for (const b of root().querySelectorAll(
-      "ul.categories:not(#qt-list) li button"
-    )) {
-      if (b.offsetParent === null) continue;
+    for (const b of root().querySelectorAll("ul:not(#qt-list) li > button")) {
+      if (!onScreen(b)) continue;
       const label = (b.innerText || "").trim().replace(/\s+/g, " ");
       const img = b.querySelector("img");
       const src = img && img.getAttribute("src");
@@ -405,16 +424,23 @@
       document.getElementById("qt-sec")?.remove();
       return;
     }
-    // Match the native tile box height (with/without "Small categories").
-    const nb = ul.querySelector("li button");
-    const minH = nb ? Math.round(nb.getBoundingClientRect().height) : 120;
+    // Clone the app's own tile classes so our tiles are pixel-identical
+    // (and follow the "Small categories" option). The tile button holds
+    // only the icon + child name, exactly like a native tile.
+    const nb = ul.querySelector("li > button");
+    const nli = ul.querySelector("li");
+    const btnCls = nb ? nb.className : "";
+    const liCls = nli ? nli.className : "";
     const rows = list.map((name) => {
       const [p, c] = split(name);
       const icon = iconMap[c] || iconMap[p] || "";
       return { name, p, c, icon };
     });
+    // Re-render when the tile list, icons, or native tile styling change
+    // (the last covers the "Small categories" toggle swapping classes).
     const sig =
-      rows.map((r) => r.name + ":" + (r.icon ? 1 : 0)).join("|") + "@" + minH;
+      rows.map((r) => r.name + ":" + (r.icon ? 1 : 0)).join("|") +
+      "@" + btnCls;
 
     let sec = document.getElementById("qt-sec");
     if (sec && sec.dataset.sig === sig && sec.previousElementSibling === ul)
@@ -427,21 +453,26 @@
     let tiles = "";
     for (const r of rows) {
       tiles +=
-        "<li><button type='button' class='qt-t' data-name='" +
+        "<li class='" +
+        esc(liCls) +
+        "' data-name='" +
         esc(r.name) +
-        "' style='min-height:" +
-        minH +
-        "px'>" +
-        (r.icon ? "<img src='" + esc(r.icon) + "'>" : "") +
-        "<span class='qt-c'>" +
+        "'><button type='button' class='" +
+        esc(btnCls) +
+        "'>" +
+        (r.icon
+          ? "<img class='mx-auto block' src='" + esc(r.icon) + "'>"
+          : "") +
         esc(r.c) +
-        "</span>" +
-        (r.p ? "<span class='qt-p'>" + esc(r.p) + "</span>" : "") +
-        "</button></li>";
+        "</button>" +
+        (r.p ? "<div class='qt-p'>" + esc(r.p) + "</div>" : "") +
+        "</li>";
     }
     sec.innerHTML =
       '<div class="qt-h">Recently used</div>' +
-      '<ul class="categories" id="qt-list">' +
+      '<ul class="' +
+      esc(ul.className) +
+      '" id="qt-list">' +
       tiles +
       "</ul>";
     ul.insertAdjacentElement("afterend", sec);
