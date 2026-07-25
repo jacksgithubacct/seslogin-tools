@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Who's Here (scan kiosk sidebar)
 // @namespace    seslogin.userscripts
-// @version      0.12.2
+// @version      0.12.3
 // @description  Adds a compact live "who's currently signed in" sidebar to the SES Activity scan kiosk so the last person out can see who forgot to sign out, with a per-person Sign out button that types their member number into the kiosk box and submits. Event-driven refresh with a slow background safety poll - very light on the server.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -106,8 +106,10 @@
     if (!token) throw new Error("No kiosk token in localStorage");
     // No-arg `session` resolves the current kiosk's own session/location
     // from the token - the scan kiosk stores no locationId.
+    // guestName: the kiosk gained guest sign-in (Jul 2026). A guest period
+    // has no `person`, so without this it would render as a blank row.
     const query =
-      "query{session{location{periods(onlyActive:true){edges{node{startTime person{firstName lastName memberNumber}}}}}}}";
+      "query{session{location{periods(onlyActive:true){edges{node{startTime guestName person{firstName lastName memberNumber}}}}}}}";
     const res = await fetch(gqlUrl(), {
       method: "POST",
       headers: {
@@ -351,7 +353,12 @@
         .replace(/"/g, "&quot;");
     for (const node of lastNodes) {
       const p = node.person || {};
-      const nm = ((p.firstName || "") + " " + (p.lastName || "")).trim();
+      // Members have a person; guests only have guestName. Guests carry no
+      // member number, so they get no Sign out button (the `mn` guard
+      // below) - they are signed out from the kiosk as usual.
+      const nm =
+        ((p.firstName || "") + " " + (p.lastName || "")).trim() ||
+        (node.guestName || "").trim();
       const mn = (p.memberNumber || "").trim();
       html +=
         "<li><span class='nm'>" +

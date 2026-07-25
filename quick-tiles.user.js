@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Quick Category Tiles
 // @namespace    seslogin.userscripts
-// @version      0.9.0
+// @version      0.9.1
 // @description  Adds a row of quick-select tiles at the bottom of the SES Activity category screen for the unit's most recently used categories, so common picks skip the parent/child drill-down. Drives the normal tile flow (no direct mutation); you still confirm with Submit as usual.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -182,8 +182,15 @@
     return r.width > 0 && r.left >= -5 && r.left < window.innerWidth * 0.95;
   }
 
+  // The category screen's "go up a level" control. The kiosk relabelled it
+  // from "Back" to "← Categories" (Jul 2026), so match both - if this stops
+  // matching, the child grid looks like the parent grid and the parent
+  // label cache gets poisoned with child names.
+  const BACK_RE = /^(←\s*)?(back|categories)$/i;
+
   // A tile/category button: a button that isn't one of the controls.
   function isControl(txt) {
+    if (BACK_RE.test(txt)) return true;
     return /^(cancel sign\s?out|back|edit|submit|←|→|‹|›)$/i.test(txt);
   }
 
@@ -233,7 +240,9 @@
 
   function backButton() {
     return [...root().querySelectorAll("button")].find(
-      (b) => onScreen(b) && /^back$/i.test((b.innerText || "").trim())
+      (b) =>
+        onScreen(b) &&
+        BACK_RE.test((b.innerText || "").trim().replace(/\s+/g, " "))
     );
   }
 
