@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Who's Here (scan kiosk sidebar)
 // @namespace    seslogin.userscripts
-// @version      0.12.3
+// @version      0.12.4
 // @description  Adds a compact live "who's currently signed in" sidebar to the SES Activity scan kiosk so the last person out can see who forgot to sign out, with a per-person Sign out button that types their member number into the kiosk box and submits. Event-driven refresh with a slow background safety poll - very light on the server.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -69,7 +69,11 @@
   const ACTIVE_WINDOW_MS = 180000; // stay "active" 3 min after last activity
   const TICK_MS = 30000; // re-render durations locally (no API call)
   const PANEL_W = 300;
-  const HEAD_H = 73; // matches the SES Activity orange header height (px)
+  // Starting guess only - the real height is measured from the live orange
+  // header on every render (syncHeadHeight), because upstream changes it
+  // (it went 73 -> 56 in Jul 2026) and a hardcoded value leaves our panel
+  // header sitting proud of the app's title bar.
+  const HEAD_H = 56;
 
   // Duration-based conditional colouring. A normal muster/training night
   // is a few hours; a very long sign-in usually means someone forgot to
@@ -330,9 +334,22 @@
     prevDash = d;
   }
 
+  // Keep our panel header exactly as tall as the app's orange title bar,
+  // whatever upstream restyles it to.
+  function syncHeadHeight() {
+    const h = findHeader();
+    const el = document.getElementById("wh-head");
+    if (!h || !el) return;
+    const px = Math.round(h.getBoundingClientRect().height);
+    if (px > 20 && px < 200 && el.style.height !== px + "px") {
+      el.style.height = px + "px";
+    }
+  }
+
   function render() {
     ensurePanel();
     applyVisibility();
+    syncHeadHeight();
     const n = lastNodes.length;
     countEl.textContent =
       n + " member" + (n === 1 ? "" : "s") + " signed in";
