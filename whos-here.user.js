@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Who's Here (scan kiosk sidebar)
 // @namespace    seslogin.userscripts
-// @version      0.12.4
+// @version      0.12.5
 // @description  Adds a compact live "who's currently signed in" sidebar to the SES Activity scan kiosk so the last person out can see who forgot to sign out, with a per-person Sign out button that types their member number into the kiosk box and submits. Event-driven refresh with a slow background safety poll - very light on the server.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -427,6 +427,17 @@
     }, delay);
   })();
   setInterval(render, TICK_MS); // keep durations fresh between polls
+
+  // A resize or rotate can change the title bar's height with no DOM change
+  // to observe, so re-match it straight away instead of waiting for the
+  // next render tick.
+  let headTimer = null;
+  const reSyncHead = () => {
+    clearTimeout(headTimer);
+    headTimer = setTimeout(syncHeadHeight, 120);
+  };
+  window.addEventListener("resize", reSyncHead);
+  window.addEventListener("orientationchange", reSyncHead);
 
   // SPA view changes don't reload the page - re-evaluate visibility on
   // any DOM change (debounced) so the sidebar appears/hides instantly.
