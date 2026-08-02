@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SES Activity - Quick Category Tiles
 // @namespace    seslogin.userscripts
-// @version      0.9.1
+// @version      0.10.0
 // @description  Adds a row of quick-select tiles at the bottom of the SES Activity category screen for the unit's most recently used categories, so common picks skip the parent/child drill-down. Drives the normal tile flow (no direct mutation); you still confirm with Submit as usual.
 // @author       seslogin-tools contributors
 // @homepageURL  https://github.com/jacksgithubacct/seslogin-tools
@@ -487,7 +487,36 @@
     ul.insertAdjacentElement("afterend", sec);
   }
 
+  // Upstream added a native "Quick pick" screen (merged Jul 2026) in front
+  // of the category tree, gated by the kiosk session's quickPickCategories
+  // config. The proper way to turn it off is that admin checkbox - this is
+  // only for a kiosk you can't get the config changed on: press its own
+  // "More categories" button, which is exactly what a member would press,
+  // landing on the normal category tree where our tiles render. It commits
+  // nothing. Set to false to leave the native screen alone.
+  const SKIP_NATIVE_QUICK_PICK = true;
+  let lastSkipAt = 0;
+  function skipNativeQuickPick() {
+    if (!SKIP_NATIVE_QUICK_PICK) return false;
+    // Throttle: if a click doesn't take, don't spin on every mutation.
+    if (Date.now() - lastSkipAt < 800) return false;
+    const b = [...root().querySelectorAll("button")].find(
+      (x) =>
+        onScreen(x) &&
+        /^more categories\b/i.test(
+          (x.innerText || "").trim().replace(/\s+/g, " ")
+        )
+    );
+    if (!b) return false;
+    lastSkipAt = Date.now();
+    b.click();
+    return true;
+  }
+
   async function update() {
+    // Do this first: the sooner we leave the quick-pick screen, the less
+    // of it the member sees.
+    if (skipNativeQuickPick()) return;
     harvestIcons(); // learn icons from whatever grid is showing
     // Entry/sign-in screen (<=2 breadcrumb segments) = a member flow is
     // starting/ending -> next category-screen open should re-fetch.
